@@ -20,6 +20,12 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+
+app.get("/", (req, res) => {
+  res.json({ success: true, message: "Bravely is Live!" });
+});
+
+
 /* ── Public Auth Routes ── */
 app.use("/api/auth", authRoutes);
 
