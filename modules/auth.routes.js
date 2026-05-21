@@ -1,6 +1,8 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const router = express.Router();
+const authMiddleware = require("../middleware/auth.middleware");
+
 
 const User = require("../models/User");
 const { generateOTP, sendOTPEmail } = require("../utils/otpGenrater");
@@ -192,9 +194,9 @@ router.post("/google", async (req, res) => {
     const response = await fetchFn("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { Authorization: `Bearer ${token}` }
     });
-    
+
     if (!response.ok) {
-       return res.status(400).json({ success: false, message: "Invalid Google token." });
+      return res.status(400).json({ success: false, message: "Invalid Google token." });
     }
 
     const userData = await response.json();
@@ -206,7 +208,7 @@ router.post("/google", async (req, res) => {
       // Generate a random password for Google-authenticated users
       const randomPassword = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10);
       const hashedPassword = await bcrypt.hash(randomPassword, 12);
-      
+
       // Create user
       user = await User.create({
         name,
@@ -232,6 +234,79 @@ router.post("/google", async (req, res) => {
   } catch (error) {
     console.error("Google auth error:", error);
     res.status(500).json({ success: false, message: "Server error." });
+  }
+});
+
+/* ── Password Reset via OTP ── */
+router.post("/send-reset-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: "Email is required." });
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(404).json({ success: false, message: "User not found." });
+
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    user.otp = otp;
+    user.otpExpiry = otpExpiry;
+    await user.save();
+
+    console.log(`🔑 [DEV ONLY] Reset OTP for ${email} is: ${otp}`);
+    await sendOTPEmail(email, otp, user.name.split(" ")[0]);
+    res.json({ success: true, message: "OTP sent to email." });
+  } catch (err) {
+    console.error("Send reset OTP error:", err);
+    res.status(500).json({ success: false, message: "Server error." });
+  }
+});
+
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { email, otp, password } = req.body;
+    if (!email || !otp || !password) {
+      return res.status(400).json({ success: false, message: "Email, OTP and new password are required." });
+    }
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(404).json({ success: false, message: "User not found." });
+    if (user.otp !== otp) return res.status(400).json({ success: false, message: "Invalid OTP." });
+    if (new Date() > user.otpExpiry) return res.status(400).json({ success: false, message: "OTP expired." });
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+    user.password = hashedPassword;
+    user.isVerified = true; // ensure account is verified after reset
+    user.otp = null;
+    user.otpExpiry = null;
+    await user.save();
+    res.json({ success: true, message: "Password reset successfully." });
+  } catch (err) {
+    console.error("Reset password error:", err);
+    res.status(500).json({ success: false, message: "Server error." });
+  }
+});
+
+router.patch("/update-profile", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id; // assuming auth middleware adds user object
+    const { name, password } = req.body;
+    if (!name && !password) {
+      return res.status(400).json({ success: false, message: "No fields to update" });
+    }
+    const update = {};
+    if (name) update.name = name;
+    if (password) {
+      const hashed = await bcrypt.hash(password, 12);
+      update.password = hashed;
+    }
+    const updatedUser = await User.findByIdAndUpdate(userId, update, { new: true });
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    // Return updated user info (excluding password)
+    const { _id, email, name: updatedName } = updatedUser;
+    res.json({ success: true, message: "Profile updated", user: { id: _id, name: updatedName, email } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
