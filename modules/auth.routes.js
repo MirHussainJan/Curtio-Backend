@@ -286,26 +286,34 @@ router.post("/reset-password", async (req, res) => {
 
 router.patch("/update-profile", authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id; // assuming auth middleware adds user object
+    // Log incoming data for debugging
+    console.log('🛠️ update-profile request body:', req.body);
+    console.log('🛠️ auth user (decoded JWT):', req.user);
+
+    const userId = req.user.id;
     const { name, password } = req.body;
+
+    // If nothing to update, send a clear error
     if (!name && !password) {
       return res.status(400).json({ success: false, message: "No fields to update" });
     }
+
     const update = {};
     if (name) update.name = name;
     if (password) {
       const hashed = await bcrypt.hash(password, 12);
       update.password = hashed;
     }
+
     const updatedUser = await User.findByIdAndUpdate(userId, update, { new: true });
     if (!updatedUser) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
-    // Return updated user info (excluding password)
+    // Return updated info (omit password)
     const { _id, email, name: updatedName } = updatedUser;
     res.json({ success: true, message: "Profile updated", user: { id: _id, name: updatedName, email } });
   } catch (err) {
-    console.error(err);
+    console.error('❌ update-profile error:', err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
