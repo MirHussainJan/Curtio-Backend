@@ -98,7 +98,7 @@ const addShortUrl = async (userId, { originalUrl, customAlias, password, expires
 /**
  * Fetch and resolve a short URL, increments clicks, and logs context.
  */
-const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword }) => {
+const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, headers }) => {
   const user = await User.findOne({ "urls.shortCode": shortCode });
   if (!user) {
     throw new Error("Short URL not found.");
@@ -125,10 +125,15 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword }) =>
   }
 
   // Record click & log details
+  const { getGeoData } = require("../utils/geoip");
+  const geoData = await getGeoData(ip, headers);
+
   urlObj.clicks += 1;
   urlObj.clickLogs.push({
     ip: ip || "unknown",
     userAgent: userAgent || "unknown",
+    country: geoData.country,
+    countryCode: geoData.countryCode,
     clickedAt: new Date(),
   });
 

@@ -38,6 +38,14 @@ const urlSchema = new mongoose.Schema(
           type: String,
           default: null,
         },
+        country: {
+          type: String,
+          default: "unknown",
+        },
+        countryCode: {
+          type: String,
+          default: "unknown",
+        },
         clickedAt: {
           type: Date,
           default: Date.now,

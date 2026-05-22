@@ -78,6 +78,7 @@ const handleRedirect = async (req, res) => {
       ip,
       userAgent,
       enteredPassword,
+      headers: req.headers,
     });
 
     // Clean HTTP 302 redirection
