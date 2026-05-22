@@ -19,7 +19,13 @@ app.use(
   })
 );
 
-app.use(express.json());
+// Security headers to allow Google OAuth popups
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  next();
+});
+
 app.use(express.urlencoded({ extended: true }));
 
 
