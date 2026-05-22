@@ -192,7 +192,7 @@ router.post("/google", async (req, res) => {
       fetchFn = (await import('node-fetch')).default;
     }
     const response = await fetchFn("https://www.googleapis.com/oauth2/v3/userinfo", {
-      headers: { Authorization: `Bearer ${tokens.access_token}` }
+      headers: { Authorization: `Bearer ${token}` }
     });
 
     if (!response.ok) {
