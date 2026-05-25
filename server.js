@@ -28,6 +28,17 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+/* ── DB Connection Middleware (For Serverless) ── */
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error("DB Connection Error in Middleware:", error);
+    res.status(500).json({ success: false, message: "Database connection failed." });
+  }
+});
+
 /* ── Health Check ── */
 app.get("/", (req, res) => {
   res.json({ success: true, message: "Bravely is Live!" });
