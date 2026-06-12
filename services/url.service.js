@@ -31,7 +31,7 @@ const validateUrl = (url) => {
 const generateUniqueCode = async (length = 7) => {
   let attempts = 0;
   const maxAttempts = 100;
-  
+
   while (attempts < maxAttempts) {
     const code = generateRandomCode(length);
     const existing = await User.findOne({ "urls.shortCode": code });
@@ -40,7 +40,7 @@ const generateUniqueCode = async (length = 7) => {
     }
     attempts++;
   }
-  
+
   throw new Error("Failed to generate a unique short code after multiple attempts.");
 };
 
@@ -66,7 +66,7 @@ const addShortUrl = async (userId, { originalUrl, customAlias, password, expires
     if (!cleanAlias) {
       throw new Error("Invalid custom alias. Use only alphanumeric characters, dashes or underscores.");
     }
-    
+
     // Check if the custom alias is already taken globally
     const existingAlias = await User.findOne({ "urls.shortCode": cleanAlias });
     if (existingAlias) {

@@ -59,6 +59,10 @@ app.get("/api/dashboard", authMiddleware, (req, res) => {
 /* ── URL Routes (Protected) ── */
 app.use("/api/urls", authMiddleware, urlRoutes);
 
+/* ── Public Captcha & Verify Routes ── */
+app.get("/api/public/captcha", urlController.generateCaptcha);
+app.post("/api/public/verify/:shortCode", urlController.verifyAndResolve);
+
 /* ── Public Redirect Route ── */
 app.get("/:shortCode", urlController.handleRedirect);
 app.post("/:shortCode", urlController.handleRedirect);
