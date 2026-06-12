@@ -142,7 +142,7 @@ const verifyAndResolve = async (req, res) => {
 const handleRedirect = async (req, res) => {
   const { shortCode } = req.params;
   const frontendUrl = process.env.FRONT_END_URL;
-  return res.redirect(302, `${frontendUrl}/c/${shortCode}`);
+  return res.redirect(302, `${frontendUrl}/captcha/${shortCode}`);
 };
 
 module.exports = {
