@@ -96,34 +96,38 @@ const addShortUrl = async (userId, { originalUrl, customAlias, password, expires
 };
 
 /**
- * Detects the classification of the request based on User-Agent.
+ * Detects if the request is from a standard web browser.
+ * Also uses headers to filter out API tools and programmatic background fetches.
  */
-function classifyRequest(userAgent) {
+function isWebBrowser(userAgent, headers = {}) {
   const ua = (userAgent || "").toLowerCase();
 
-  // 1. Security Scanners
-  if (/safelinks|microsoft|proofpoint|mimecast|barracuda|virus|scan|security|audit|analyze/i.test(ua)) {
-    return "Security Scanner";
+  // 1. Exclude known bots, scanners, preview agents, AND API testing tools
+  const botPattern = /bot|crawler|spider|slurp|fetch|headless|chrome-lighthouse|puppeteer|safelinks|microsoft|proofpoint|mimecast|barracuda|virus|scan|security|audit|analyze|whatsapp|facebookexternalhit|facebot|twitterbot|slackbot|telegrambot|linkedinbot|discordbot|skypeuripreview|googlebot|bingbot|yandexbot|pinterestbot|redditbot|vkshare|embedly|quora|showyoubot|outbrain|pinterest|developers\.google\.com|google-read-aloud|mediapartners-google|adsbot-google|baiduspider|duckduckbot|ia_archiver|mj12bot|sogoubot|bitlybot|tumblr|viber|line\/|teams|wechat|snapchat|outlook|yahoo|mail|thunderbird|postman|curl|insomnia|axios|wget|libwww|httpclient|java|go-http-client|ruby|python-requests/i;
+  
+  if (botPattern.test(ua)) {
+    return false;
   }
 
-  // 2. Email Scanners
-  if (/outlook|googleimageproxy|yahoo|mail|thunderbird/i.test(ua)) {
-    return "Email Scanner";
+  // 2. Accept Header Check
+  // Real browsers almost always include 'text/html' in their Accept header when clicking a link.
+  // API tools, default curl/postman often use '*/*' or 'application/json'.
+  const acceptHeader = (headers['accept'] || "").toLowerCase();
+  if (acceptHeader && !acceptHeader.includes('text/html')) {
+    return false;
   }
 
-  // 3. Link Preview Bots
-  const previewBots = /whatsapp|facebookexternalhit|facebot|twitterbot|slackbot|telegrambot|linkedinbot|discordbot|skypeuripreview|googlebot|bingbot|yandexbot|pinterestbot|redditbot|vkshare|embedly|quora link preview|showyoubot|outbrain|pinterest|developers\.google\.com|google-read-aloud|mediapartners-google|adsbot-google|baiduspider|duckduckbot|ia_archiver|mj12bot|sogoubot|bitlybot|tumblr|viber|line\/|teams|wechat|snapchat/i;
-  if (previewBots.test(ua)) {
-    return "Link Preview Bot";
+  // 3. Sec-Fetch-Dest Check (Modern Browsers)
+  // When a user clicks a link, the destination is 'document' (or 'iframe').
+  // Programmatic fetches (like MS Teams backend fetching the URL) often send 'empty'.
+  const secFetchDest = (headers['sec-fetch-dest'] || "").toLowerCase();
+  if (secFetchDest && secFetchDest !== 'document' && secFetchDest !== 'iframe') {
+    return false;
   }
 
-  // 4. Any other bot
-  if (/bot|crawler|spider|slurp|fetch|headless|chrome-lighthouse|puppeteer/i.test(ua)) {
-    return "Automated System";
-  }
-
-  // Default
-  return "Human Browser";
+  // 4. Allow standard web browsers
+  const browserPattern = /chrome|edg|opr|opera|brave|torbrowser|firefox|safari|trident|msie/i;
+  return browserPattern.test(ua);
 }
 
 /**
@@ -156,9 +160,11 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, head
     throw err;
   }
 
-  // ── Classify the request ──
+  // ── Browser check ──
   const ua = userAgent || "";
-  const classification = classifyRequest(ua);
+  if (!isWebBrowser(ua, headers)) {
+    return urlObj; // Skip tracking entirely for non-browsers (like Teams scanners or API tools)
+  }
 
   // ── Deduplicate: skip recording if same visitor clicked within the last 10s ──
   const now = new Date();
@@ -175,9 +181,7 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, head
 
     const referer = headers?.referer || headers?.referrer || null;
 
-    if (classification === "Human Browser") {
-      urlObj.clicks += 1;
-    }
+    urlObj.clicks += 1;
 
     urlObj.clickLogs.push({
       ip: ip || "unknown",
@@ -186,11 +190,6 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, head
       country: geoData.country,
       countryCode: geoData.countryCode,
       clickedAt: now,
-      classification: classification,
-      secFetchSite: headers?.['sec-fetch-site'] || null,
-      secFetchMode: headers?.['sec-fetch-mode'] || null,
-      secFetchDest: headers?.['sec-fetch-dest'] || null,
-      xForwardedFor: headers?.['x-forwarded-for'] || null,
     });
 
     await user.save();

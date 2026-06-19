@@ -54,26 +54,6 @@ const urlSchema = new mongoose.Schema(
           type: Date,
           default: Date.now,
         },
-        classification: {
-          type: String,
-          default: "Human Browser",
-        },
-        secFetchSite: {
-          type: String,
-          default: null,
-        },
-        secFetchMode: {
-          type: String,
-          default: null,
-        },
-        secFetchDest: {
-          type: String,
-          default: null,
-        },
-        xForwardedFor: {
-          type: String,
-          default: null,
-        },
       },
     ],
   },
