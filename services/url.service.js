@@ -96,12 +96,35 @@ const addShortUrl = async (userId, { originalUrl, customAlias, password, expires
 };
 
 /**
- * Regex to detect link-preview bots / URL scrapers.
- * These fire when you paste a URL in WhatsApp, Teams, Slack, etc.
- * We still redirect them, but do NOT count them as clicks.
+ * Detects the classification of the request based on User-Agent.
  */
-const LINK_PREVIEW_BOT_PATTERN =
-  /WhatsApp|facebookexternalhit|Facebot|Twitterbot|Slackbot|TelegramBot|LinkedInBot|Discordbot|SkypeUriPreview|Googlebot|bingbot|YandexBot|PinterestBot|redditbot|vkShare|Embedly|Quora Link Preview|Showyoubot|outbrain|pinterest|developers\.google\.com|Google-Read-Aloud|Mediapartners-Google|AdsBot-Google|Baiduspider|DuckDuckBot|ia_archiver|MJ12bot|Sogoubot|bitlybot|tumblr|Viber|Line\//i;
+function classifyRequest(userAgent) {
+  const ua = (userAgent || "").toLowerCase();
+
+  // 1. Security Scanners
+  if (/safelinks|microsoft|proofpoint|mimecast|barracuda|virus|scan|security|audit|analyze/i.test(ua)) {
+    return "Security Scanner";
+  }
+
+  // 2. Email Scanners
+  if (/outlook|googleimageproxy|yahoo|mail|thunderbird/i.test(ua)) {
+    return "Email Scanner";
+  }
+
+  // 3. Link Preview Bots
+  const previewBots = /whatsapp|facebookexternalhit|facebot|twitterbot|slackbot|telegrambot|linkedinbot|discordbot|skypeuripreview|googlebot|bingbot|yandexbot|pinterestbot|redditbot|vkshare|embedly|quora link preview|showyoubot|outbrain|pinterest|developers\.google\.com|google-read-aloud|mediapartners-google|adsbot-google|baiduspider|duckduckbot|ia_archiver|mj12bot|sogoubot|bitlybot|tumblr|viber|line\/|teams|wechat|snapchat/i;
+  if (previewBots.test(ua)) {
+    return "Link Preview Bot";
+  }
+
+  // 4. Any other bot
+  if (/bot|crawler|spider|slurp|fetch|headless|chrome-lighthouse|puppeteer/i.test(ua)) {
+    return "Automated System";
+  }
+
+  // Default
+  return "Human Browser";
+}
 
 /**
  * Fetch and resolve a short URL, increments clicks, and logs context.
@@ -133,12 +156,9 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, head
     throw err;
   }
 
-  // ── Skip recording for link-preview bots (WhatsApp, Teams, Slack, etc.) ──
+  // ── Classify the request ──
   const ua = userAgent || "";
-  if (LINK_PREVIEW_BOT_PATTERN.test(ua)) {
-    // Bot gets the redirect, but no click is recorded
-    return urlObj;
-  }
+  const classification = classifyRequest(ua);
 
   // ── Deduplicate: skip recording if same visitor clicked within the last 10s ──
   const now = new Date();
@@ -155,7 +175,10 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, head
 
     const referer = headers?.referer || headers?.referrer || null;
 
-    urlObj.clicks += 1;
+    if (classification === "Human Browser") {
+      urlObj.clicks += 1;
+    }
+
     urlObj.clickLogs.push({
       ip: ip || "unknown",
       userAgent: ua || "unknown",
@@ -163,6 +186,11 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, head
       country: geoData.country,
       countryCode: geoData.countryCode,
       clickedAt: now,
+      classification: classification,
+      secFetchSite: headers?.['sec-fetch-site'] || null,
+      secFetchMode: headers?.['sec-fetch-mode'] || null,
+      secFetchDest: headers?.['sec-fetch-dest'] || null,
+      xForwardedFor: headers?.['x-forwarded-for'] || null,
     });
 
     await user.save();
