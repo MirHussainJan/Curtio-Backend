@@ -38,6 +38,10 @@ const urlSchema = new mongoose.Schema(
           type: String,
           default: null,
         },
+        referer: {
+          type: String,
+          default: null,
+        },
         country: {
           type: String,
           default: "unknown",

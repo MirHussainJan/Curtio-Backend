@@ -96,7 +96,16 @@ const addShortUrl = async (userId, { originalUrl, customAlias, password, expires
 };
 
 /**
+ * Regex to detect link-preview bots / URL scrapers.
+ * These fire when you paste a URL in WhatsApp, Teams, Slack, etc.
+ * We still redirect them, but do NOT count them as clicks.
+ */
+const LINK_PREVIEW_BOT_PATTERN =
+  /WhatsApp|facebookexternalhit|Facebot|Twitterbot|Slackbot|TelegramBot|LinkedInBot|Discordbot|SkypeUriPreview|Googlebot|bingbot|YandexBot|PinterestBot|redditbot|vkShare|Embedly|Quora Link Preview|Showyoubot|outbrain|pinterest|developers\.google\.com|Google-Read-Aloud|Mediapartners-Google|AdsBot-Google|Baiduspider|DuckDuckBot|ia_archiver|MJ12bot|Sogoubot|bitlybot|tumblr|Viber|Line\//i;
+
+/**
  * Fetch and resolve a short URL, increments clicks, and logs context.
+ * Skips recording for link-preview bots and deduplicates same-visitor clicks.
  */
 const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, headers }) => {
   const user = await User.findOne({ "urls.shortCode": shortCode });
@@ -124,20 +133,40 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, head
     throw err;
   }
 
-  // Record click & log details
-  const { getGeoData } = require("../utils/geoip");
-  const geoData = await getGeoData(ip, headers);
+  // ── Skip recording for link-preview bots (WhatsApp, Teams, Slack, etc.) ──
+  const ua = userAgent || "";
+  if (LINK_PREVIEW_BOT_PATTERN.test(ua)) {
+    // Bot gets the redirect, but no click is recorded
+    return urlObj;
+  }
 
-  urlObj.clicks += 1;
-  urlObj.clickLogs.push({
-    ip: ip || "unknown",
-    userAgent: userAgent || "unknown",
-    country: geoData.country,
-    countryCode: geoData.countryCode,
-    clickedAt: new Date(),
+  // ── Deduplicate: skip recording if same visitor clicked within the last 10s ──
+  const now = new Date();
+  const DEDUP_WINDOW_MS = 10 * 1000; // 10 seconds
+  const isDuplicate = urlObj.clickLogs.some((log) => {
+    if (log.ip !== (ip || "unknown") || log.userAgent !== (ua || "unknown")) return false;
+    return now - new Date(log.clickedAt) < DEDUP_WINDOW_MS;
   });
 
-  await user.save();
+  if (!isDuplicate) {
+    // Record click & log details
+    const { getGeoData } = require("../utils/geoip");
+    const geoData = await getGeoData(ip, headers);
+
+    const referer = headers?.referer || headers?.referrer || null;
+
+    urlObj.clicks += 1;
+    urlObj.clickLogs.push({
+      ip: ip || "unknown",
+      userAgent: ua || "unknown",
+      referer: referer,
+      country: geoData.country,
+      countryCode: geoData.countryCode,
+      clickedAt: now,
+    });
+
+    await user.save();
+  }
 
   return urlObj;
 };
