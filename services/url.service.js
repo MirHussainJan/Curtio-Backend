@@ -99,35 +99,56 @@ const addShortUrl = async (userId, { originalUrl, customAlias, password, expires
  * Detects if the request is from a standard web browser.
  * Also uses headers to filter out API tools and programmatic background fetches.
  */
+function getSource(ua, referer) {
+  ua = (ua || "").toLowerCase();
+  referer = (referer || "").toLowerCase();
+
+  if (referer.includes("whatsapp.com") || ua.includes("whatsapp")) return "WhatsApp";
+  if (referer.includes("facebook.com") || ua.includes("fbav") || ua.includes("fban")) return "Facebook";
+  if (referer.includes("instagram.com") || ua.includes("instagram")) return "Instagram";
+  if (referer.includes("tiktok.com") || ua.includes("tiktok") || ua.includes("bytedance")) return "TikTok";
+  if (referer.includes("youtube.com") || referer.includes("youtu.be") || ua.includes("youtube")) return "YouTube";
+  if (referer.includes("linkedin.com") || ua.includes("linkedin")) return "LinkedIn";
+  if (referer.includes("twitter.com") || referer.includes("t.co") || ua.includes("twitter")) return "Twitter";
+  if (referer.includes("reddit.com") || ua.includes("reddit")) return "Reddit";
+  if (referer.includes("pinterest.com") || ua.includes("pinterest")) return "Pinterest";
+  if (referer.includes("snapchat.com") || ua.includes("snapchat")) return "Snapchat";
+  if (referer.includes("discord.com") || ua.includes("discord")) return "Discord";
+  if (referer.includes("telegram.org") || referer.includes("t.me") || ua.includes("telegram")) return "Telegram";
+  if (referer.includes("teams.microsoft")) return "Teams";
+  if (referer.includes("slack.com") || ua.includes("slack")) return "Slack";
+  if (referer.includes("mail.google.com")) return "Gmail";
+  if (referer.includes("outlook.live.com") || referer.includes("outlook")) return "Outlook";
+  if (referer.includes("wechat.com") || ua.includes("wechat") || ua.includes("micromessenger")) return "WeChat";
+  if (referer.includes("line.me") || ua.includes("line")) return "Line";
+  if (referer.includes("viber.com") || ua.includes("viber")) return "Viber";
+
+  if (ua.includes("hola")) return "Hola Browser";
+  if (ua.includes("opr") || ua.includes("opera")) return "Opera";
+  if (ua.includes("edg")) return "Edge";
+  if (ua.includes("brave")) return "Brave";
+  if (ua.includes("torbrowser")) return "Tor";
+  if (ua.includes("fxios") || ua.includes("firefox")) return "Firefox";
+  if (ua.includes("trident") || ua.includes("msie")) return "Internet Explorer";
+  if (ua.includes("crios") || ua.includes("chrome")) return "Chrome";
+  if (ua.includes("safari") && ua.includes("mobile")) return "iOS Safari";
+  if (ua.includes("safari")) return "Safari";
+
+  return "Direct";
+}
+
 function isWebBrowser(userAgent, headers = {}) {
   const ua = (userAgent || "").toLowerCase();
 
-  // 1. Exclude known bots, scanners, preview agents, AND API testing tools
-  const botPattern = /bot|crawler|spider|slurp|fetch|headless|chrome-lighthouse|puppeteer|safelinks|microsoft|proofpoint|mimecast|barracuda|virus|scan|security|audit|analyze|whatsapp|facebookexternalhit|facebot|twitterbot|slackbot|telegrambot|linkedinbot|discordbot|skypeuripreview|googlebot|bingbot|yandexbot|pinterestbot|redditbot|vkshare|embedly|quora|showyoubot|outbrain|pinterest|developers\.google\.com|google-read-aloud|mediapartners-google|adsbot-google|baiduspider|duckduckbot|ia_archiver|mj12bot|sogoubot|bitlybot|tumblr|viber|line\/|teams|wechat|snapchat|outlook|yahoo|mail|thunderbird|postman|curl|insomnia|axios|wget|libwww|httpclient|java|go-http-client|ruby|python-requests/i;
-  
+  // 1. Exclude known bots, scanners, preview agents
+  const botPattern = /bot|crawler|spider|slurp|fetch|headless|chrome-lighthouse|puppeteer|safelinks|microsoft|proofpoint|mimecast|barracuda|virus|scan|security|audit|analyze|facebookexternalhit|facebot|twitterbot|slackbot|telegrambot|linkedinbot|discordbot|skypeuripreview|googlebot|bingbot|yandexbot|pinterestbot|redditbot|vkshare|embedly|quora|showyoubot|outbrain|developers\.google\.com|google-read-aloud|mediapartners-google|adsbot-google|baiduspider|duckduckbot|ia_archiver|mj12bot|sogoubot|bitlybot|postman|curl|insomnia|axios|wget|libwww|httpclient|java|go-http-client|ruby|python-requests/i;
+
   if (botPattern.test(ua)) {
     return false;
   }
 
-  // 2. Accept Header Check
-  // Real browsers almost always include 'text/html' in their Accept header when clicking a link.
-  // API tools, default curl/postman often use '*/*' or 'application/json'.
-  const acceptHeader = (headers['accept'] || "").toLowerCase();
-  if (acceptHeader && !acceptHeader.includes('text/html')) {
-    return false;
-  }
-
-  // 3. Sec-Fetch-Dest Check (Modern Browsers)
-  // When a user clicks a link, the destination is 'document' (or 'iframe').
-  // Programmatic fetches (like MS Teams backend fetching the URL) often send 'empty'.
-  const secFetchDest = (headers['sec-fetch-dest'] || "").toLowerCase();
-  if (secFetchDest && secFetchDest !== 'document' && secFetchDest !== 'iframe') {
-    return false;
-  }
-
-  // 4. Allow standard web browsers
-  const browserPattern = /chrome|edg|opr|opera|brave|torbrowser|firefox|safari|trident|msie/i;
-  return browserPattern.test(ua);
+  // Allow standard browsers and mobile in-app browsers
+  return true;
 }
 
 /**
@@ -180,6 +201,7 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, head
     const geoData = await getGeoData(ip, headers);
 
     const referer = headers?.referer || headers?.referrer || null;
+    const source = getSource(ua, referer);
 
     urlObj.clicks += 1;
 
@@ -187,6 +209,7 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, head
       ip: ip || "unknown",
       userAgent: ua || "unknown",
       referer: referer,
+      source: source,
       country: geoData.country,
       countryCode: geoData.countryCode,
       clickedAt: now,

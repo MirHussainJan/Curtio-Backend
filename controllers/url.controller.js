@@ -76,6 +76,9 @@ const handleRedirect = async (req, res) => {
   const ip = req.headers["x-forwarded-for"] || req.ip || req.socket.remoteAddress;
   const userAgent = req.headers["user-agent"];
 
+  // 5-second delay to deter fast bots/scanners before attempting redirect
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+
   try {
     const urlObj = await urlService.resolveShortUrl(shortCode, {
       ip,
