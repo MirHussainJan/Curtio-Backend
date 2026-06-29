@@ -96,15 +96,52 @@ const addShortUrl = async (userId, { originalUrl, customAlias, password, expires
 };
 
 /**
+ * Maps the X-Requested-With header (the launching app's Android package name,
+ * set by many WebView-based in-app browsers) to a platform name.
+ * This is a stronger signal than UA/Referer sniffing since it can't be spoofed
+ * by privacy-stripped referrers, but only fires for WebView-based in-app
+ * browsers — Custom Tabs (used by newer WhatsApp/Telegram builds) don't set it.
+ */
+const ANDROID_PACKAGE_SOURCE_MAP = {
+  "com.whatsapp": "WhatsApp",
+  "com.whatsapp.w4b": "WhatsApp",
+  "com.facebook.katana": "Facebook",
+  "com.facebook.lite": "Facebook",
+  "com.facebook.orca": "Messenger",
+  "com.instagram.android": "Instagram",
+  "com.instagram.lite": "Instagram",
+  "org.telegram.messenger": "Telegram",
+  "org.telegram.messenger.web": "Telegram",
+  "com.twitter.android": "Twitter",
+  "com.linkedin.android": "LinkedIn",
+  "com.zhiliaoapp.musically": "TikTok",
+  "com.ss.android.ugc.trill": "TikTok",
+  "com.snapchat.android": "Snapchat",
+  "com.pinterest": "Pinterest",
+  "com.discord": "Discord",
+  "com.reddit.frontpage": "Reddit",
+  "com.Slack": "Slack",
+};
+
+function getSourceFromRequestedWith(xRequestedWith) {
+  if (!xRequestedWith) return null;
+  return ANDROID_PACKAGE_SOURCE_MAP[xRequestedWith.trim()] || null;
+}
+
+/**
  * Detects if the request is from a standard web browser.
  * Also uses headers to filter out API tools and programmatic background fetches.
  */
-function getSource(ua, referer) {
+function getSource(ua, referer, xRequestedWith) {
+  const fromPackage = getSourceFromRequestedWith(xRequestedWith);
+  if (fromPackage) return fromPackage;
+
   ua = (ua || "").toLowerCase();
   referer = (referer || "").toLowerCase();
 
   if (referer.includes("whatsapp.com") || ua.includes("whatsapp")) return "WhatsApp";
-  if (referer.includes("facebook.com") || ua.includes("fbav") || ua.includes("fban")) return "Facebook";
+  if (ua.includes("messenger")) return "Messenger";
+  if (referer.includes("facebook.com") || ua.includes("fbav") || ua.includes("fban") || ua.includes("fb_iab")) return "Facebook";
   if (referer.includes("instagram.com") || ua.includes("instagram")) return "Instagram";
   if (referer.includes("tiktok.com") || ua.includes("tiktok") || ua.includes("bytedance")) return "TikTok";
   if (referer.includes("youtube.com") || referer.includes("youtu.be") || ua.includes("youtube")) return "YouTube";
@@ -201,7 +238,8 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, head
     const geoData = await getGeoData(ip, headers);
 
     const referer = headers?.referer || headers?.referrer || null;
-    const source = getSource(ua, referer);
+    const xRequestedWith = headers?.["x-requested-with"] || null;
+    const source = getSource(ua, referer, xRequestedWith);
 
     urlObj.clicks += 1;
 
@@ -209,6 +247,7 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, head
       ip: ip || "unknown",
       userAgent: ua || "unknown",
       referer: referer,
+      xRequestedWith: xRequestedWith,
       source: source,
       country: geoData.country,
       countryCode: geoData.countryCode,

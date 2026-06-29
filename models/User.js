@@ -33,6 +33,7 @@ const urlSchema = new mongoose.Schema(
         ip: String,
         userAgent: String,
         referer: String,
+        xRequestedWith: String,
 
         secFetchSite: String,
         secFetchMode: String,
