@@ -81,8 +81,248 @@ const handleRedirect = async (req, res) => {
       headers: req.headers,
     });
 
-    // Clean HTTP 302 redirection
-    return res.redirect(302, urlObj.originalUrl);
+    const destination = urlObj.originalUrl;
+
+    // Serve a clean loader page matching frontend UI (slate-50 bg, white card, indigo accents)
+    return res.status(200).send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Redirecting… — Brevly</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+        <style>
+          *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+          body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: #F8FAFC;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+          }
+
+          /* ── Card ── */
+          .card {
+            background: #ffffff;
+            border: 1px solid #E2E8F0;
+            border-radius: 24px;
+            padding: 48px 40px 44px;
+            width: 100%;
+            max-width: 420px;
+            text-align: center;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.04);
+            animation: cardEntry 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+          }
+          @keyframes cardEntry {
+            from { opacity: 0; transform: translateY(20px) scale(0.97); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+          }
+
+          /* ── Orbiting loader ── */
+          .loader-wrapper {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 28px;
+            position: relative;
+          }
+          .orbit {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            animation: spin 2s linear infinite;
+          }
+          .orbit:nth-child(1) { animation-duration: 2.4s; }
+          .orbit:nth-child(2) { animation-duration: 1.8s; animation-direction: reverse; }
+          .orbit:nth-child(3) { animation-duration: 3s; }
+
+          .orbit::before {
+            content: '';
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            top: 0;
+            left: 50%;
+            margin-left: -5px;
+          }
+          .orbit:nth-child(1)::before {
+            background: #4F46E5;
+            box-shadow: 0 0 10px rgba(79,70,229,0.4);
+          }
+          .orbit:nth-child(2)::before {
+            background: #6366F1;
+            box-shadow: 0 0 10px rgba(99,102,241,0.35);
+            width: 8px; height: 8px; margin-left: -4px;
+          }
+          .orbit:nth-child(3)::before {
+            background: #818CF8;
+            box-shadow: 0 0 10px rgba(129,140,248,0.3);
+            width: 6px; height: 6px; margin-left: -3px;
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+
+          /* ── Center dot ── */
+          .center-dot {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 12px; height: 12px;
+            margin: -6px 0 0 -6px;
+            border-radius: 50%;
+            background: #4F46E5;
+            box-shadow: 0 0 16px rgba(79,70,229,0.3);
+            animation: pulse 2s ease-in-out infinite;
+          }
+          @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.7; }
+            50%      { transform: scale(1.3); opacity: 1; }
+          }
+
+          /* ── Brand icon ── */
+          .brand-icon {
+            width: 36px;
+            height: 36px;
+            background: #4F46E5;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+          }
+          .brand-icon svg {
+            width: 18px;
+            height: 18px;
+            color: white;
+          }
+
+          /* ── Text ── */
+          h1 {
+            font-size: 20px;
+            font-weight: 800;
+            color: #0F172A;
+            margin-bottom: 6px;
+          }
+          .subtitle {
+            font-size: 14px;
+            color: #64748B;
+            line-height: 1.5;
+            margin-bottom: 28px;
+          }
+
+          /* ── Progress bar ── */
+          .progress-track {
+            width: 100%;
+            height: 4px;
+            background: #F1F5F9;
+            border-radius: 999px;
+            overflow: hidden;
+            margin-bottom: 16px;
+          }
+          .progress-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #4F46E5, #818CF8);
+            animation: fillBar 5s linear forwards;
+          }
+          @keyframes fillBar {
+            to { width: 100%; }
+          }
+
+          /* ── Countdown ── */
+          .countdown {
+            font-size: 13px;
+            color: #94A3B8;
+            font-weight: 500;
+          }
+          .countdown span {
+            color: #4F46E5;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+          }
+
+          /* ── Destination link ── */
+          .dest-link {
+            display: inline-block;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #64748B;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 10px;
+            border: 1px solid #E2E8F0;
+            background: #F8FAFC;
+            transition: all 0.2s;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .dest-link:hover {
+            color: #4F46E5;
+            border-color: #C7D2FE;
+            background: #EEF2FF;
+          }
+
+          @media (max-width: 480px) {
+            .card { margin: 16px; padding: 36px 24px 32px; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <!-- Orbiting loader -->
+          <div class="loader-wrapper">
+            <div class="orbit"></div>
+            <div class="orbit"></div>
+            <div class="orbit"></div>
+            <div class="center-dot"></div>
+          </div>
+
+          <!-- Brand icon -->
+          <div class="brand-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+          </div>
+
+          <h1>Redirecting You</h1>
+          <p class="subtitle">Please wait while we securely take you to your destination.</p>
+
+          <!-- Progress bar -->
+          <div class="progress-track">
+            <div class="progress-fill"></div>
+          </div>
+
+          <div class="countdown">Redirecting in <span id="timer">5</span>s</div>
+
+          <a class="dest-link" href="${destination}" title="${destination}">
+            ${destination.length > 55 ? destination.substring(0, 55) + '…' : destination}
+          </a>
+        </div>
+
+        <script>
+          (function() {
+            var seconds = 5;
+            var el = document.getElementById('timer');
+            var interval = setInterval(function() {
+              seconds--;
+              if (el) el.textContent = seconds;
+              if (seconds <= 0) {
+                clearInterval(interval);
+                window.location.href = ${JSON.stringify(destination)};
+              }
+            }, 1000);
+          })();
+        </script>
+      </body>
+      </html>
+    `);
   } catch (error) {
     if (error.passwordRequired) {
       // Render premium and beautiful HTML password form with glassmorphic styling
