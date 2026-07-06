@@ -30,22 +30,40 @@ const urlSchema = new mongoose.Schema(
     },
     clickLogs: [
       {
-        ip: {
+        ip: String,
+        userAgent: String,
+        referer: String,
+        xRequestedWith: String,
+
+        secFetchSite: String,
+        secFetchMode: String,
+        secFetchDest: String,
+
+        source: {
+          type: String,
+          default: "unknown",
+        },
+
+        isBot: {
+          type: Boolean,
+          default: false,
+        },
+
+        botReason: {
           type: String,
           default: null,
         },
-        userAgent: {
-          type: String,
-          default: null,
-        },
+
         country: {
           type: String,
           default: "unknown",
         },
+
         countryCode: {
           type: String,
           default: "unknown",
         },
+
         clickedAt: {
           type: Date,
           default: Date.now,

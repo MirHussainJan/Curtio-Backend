@@ -61,7 +61,6 @@ app.use("/api/urls", authMiddleware, urlRoutes);
 
 /* ── Public Redirect Route ── */
 app.get("/:shortCode", urlController.handleRedirect);
-app.post("/:shortCode", urlController.handleRedirect);
 
 /* ── Start Server AFTER DB CONNECT ── */
 const startServer = async () => {
