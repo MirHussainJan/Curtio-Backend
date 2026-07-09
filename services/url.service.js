@@ -238,10 +238,11 @@ function isWebBrowser(userAgent, headers = {}) {
 }
 
 /**
- * Fetch and resolve a short URL, increments clicks, and logs context.
- * Skips recording for link-preview bots and deduplicates same-visitor clicks.
+ * Fetch and validate a short URL — does NOT record a click.
+ * Call this when serving the loader page so that closing the tab early
+ * does not inflate click counts.
  */
-const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, headers, utmSource }) => {
+const resolveShortUrl = async (shortCode, { enteredPassword } = {}) => {
   const user = await User.findOne({ "urls.shortCode": shortCode });
   if (!user) {
     throw new Error("Short URL not found.");
@@ -267,52 +268,58 @@ const resolveShortUrl = async (shortCode, { ip, userAgent, enteredPassword, head
     throw err;
   }
 
-  // ── Browser check ──
-  const ua = userAgent || "";
-  if (!isWebBrowser(ua, headers)) {
-    return urlObj; // Skip tracking entirely for non-browsers (like Teams scanners or API tools)
-  }
+  return urlObj;
+};
 
-  // ── Deduplicate: skip recording if same visitor clicked within the last 10s ──
+/**
+ * Record a click for a short URL.
+ * Called ONLY after the loader page has fully counted down (≥3 s on the client),
+ * so closing the tab before redirect fires will NOT register a click.
+ */
+const trackClick = async (shortCode, { ip, userAgent, headers, utmSource }) => {
+  // ── Bot check — ignore programmatic / preview fetches ──
+  const ua = userAgent || "";
+  if (!isWebBrowser(ua, headers)) return;
+
+  const user = await User.findOne({ "urls.shortCode": shortCode });
+  if (!user) return; // silently ignore — URL may have been deleted
+
+  const urlObj = user.urls.find((u) => u.shortCode === shortCode);
+  if (!urlObj || !urlObj.active) return;
+
+  // ── Deduplicate: skip if same visitor already tracked within last 10 s ──
   const now = new Date();
-  const DEDUP_WINDOW_MS = 10 * 1000; // 10 seconds
+  const DEDUP_WINDOW_MS = 10 * 1000;
   const isDuplicate = urlObj.clickLogs.some((log) => {
     if (log.ip !== (ip || "unknown") || log.userAgent !== (ua || "unknown")) return false;
     return now - new Date(log.clickedAt) < DEDUP_WINDOW_MS;
   });
 
-  if (!isDuplicate) {
-    // Record click & log details
-    const { getGeoData } = require("../utils/geoip");
-    const geoData = await getGeoData(ip, headers);
+  if (isDuplicate) return;
 
-    const referer = headers?.referer || headers?.referrer || null;
-    const xRequestedWith = headers?.["x-requested-with"] || null;
-    
-    let source;
-    if (utmSource) {
-      source = getPlatformFromUtm(utmSource);
-    } else {
-      source = getSource(ua, referer, xRequestedWith);
-    }
+  const { getGeoData } = require("../utils/geoip");
+  const geoData = await getGeoData(ip, headers);
 
-    urlObj.clicks += 1;
+  const referer = headers?.referer || headers?.referrer || null;
+  const xRequestedWith = headers?.["x-requested-with"] || null;
 
-    urlObj.clickLogs.push({
-      ip: ip || "unknown",
-      userAgent: ua || "unknown",
-      referer: referer,
-      xRequestedWith: xRequestedWith,
-      source: source,
-      country: geoData.country,
-      countryCode: geoData.countryCode,
-      clickedAt: now,
-    });
+  const source = utmSource
+    ? getPlatformFromUtm(utmSource)
+    : getSource(ua, referer, xRequestedWith);
 
-    await user.save();
-  }
+  urlObj.clicks += 1;
+  urlObj.clickLogs.push({
+    ip: ip || "unknown",
+    userAgent: ua || "unknown",
+    referer,
+    xRequestedWith,
+    source,
+    country: geoData.country,
+    countryCode: geoData.countryCode,
+    clickedAt: now,
+  });
 
-  return urlObj;
+  await user.save();
 };
 
 /**
@@ -368,6 +375,7 @@ module.exports = {
   validateUrl,
   addShortUrl,
   resolveShortUrl,
+  trackClick,
   getUserUrls,
   deleteUserUrl,
   toggleUserUrlActive,

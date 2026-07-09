@@ -73,20 +73,14 @@ const toggleUrlActive = async (req, res) => {
  */
 const handleRedirect = async (req, res) => {
   const { shortCode } = req.params;
-  const ip = req.headers["x-forwarded-for"] || req.ip || req.socket.remoteAddress;
-  const userAgent = req.headers["user-agent"];
-  const utmSource = req.query.utm_source;
 
   try {
+    // Only validates the link — does NOT record a click
     const urlObj = await urlService.resolveShortUrl(shortCode, {
-      ip,
-      userAgent,
       enteredPassword: null,
-      headers: req.headers,
-      utmSource,
     });
 
-    // Forward the request's query parameters to the destination URL so UTM tracking works on the target page
+    // Forward query params to destination so UTM tracking works on the target page
     let destinationUrl = urlObj.originalUrl;
     const queryParams = req.query;
     if (queryParams && Object.keys(queryParams).length > 0) {
@@ -103,7 +97,11 @@ const handleRedirect = async (req, res) => {
       }
     }
 
-    return res.status(200).send(buildRedirectPage(destinationUrl));
+    // Pass the utm_source along so the track endpoint can use it
+    const utmSource = req.query.utm_source || "";
+    const apiBase = process.env.BACK_END_URL || "";
+
+    return res.status(200).send(buildRedirectPage(destinationUrl, shortCode, utmSource, apiBase));
   } catch (error) {
     if (error.passwordRequired) {
       const frontendUrl = process.env.FRONT_END_URL;
@@ -113,8 +111,37 @@ const handleRedirect = async (req, res) => {
   }
 };
 
-function buildRedirectPage(destinationUrl) {
+/**
+ * POST /api/track/:shortCode
+ * Called by the loader page JS after the 3-second countdown completes.
+ * This is the ONLY place a click is recorded.
+ */
+const trackClick = async (req, res) => {
+  const { shortCode } = req.params;
+  const ip = req.headers["x-forwarded-for"] || req.ip || req.socket.remoteAddress;
+  const userAgent = req.headers["user-agent"];
+  const utmSource = req.body?.utmSource || req.query.utm_source || null;
+
+  try {
+    await urlService.trackClick(shortCode, {
+      ip,
+      userAgent,
+      headers: req.headers,
+      utmSource,
+    });
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    // Non-critical — don’t break the redirect experience
+    console.error("Track click error:", error);
+    return res.status(200).json({ success: true });
+  }
+};
+
+function buildRedirectPage(destinationUrl, shortCode, utmSource, apiBase) {
   const safeUrl = destinationUrl.replace(/"/g, "&quot;");
+  const safeCode = (shortCode || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  const safeUtm = (utmSource || "").replace(/"/g, "&quot;");
+  const safeApi = (apiBase || "").replace(/"/g, "&quot;");
 
   return `<!DOCTYPE html>
 <html>
@@ -170,7 +197,24 @@ function buildRedirectPage(destinationUrl) {
   </div>
 
 <script>
+  // Track the click ONLY after the full 3-second countdown fires.
+  // If the user closes the tab before this runs, no click is recorded.
   setTimeout(function () {
+    var trackUrl = "${safeApi}/api/track/${safeCode}";
+    var payload = JSON.stringify({ utmSource: "${safeUtm}" });
+
+    // sendBeacon is fire-and-forget and survives page unload
+    if (navigator.sendBeacon) {
+      var blob = new Blob([payload], { type: 'application/json' });
+      navigator.sendBeacon(trackUrl, blob);
+    } else {
+      // Fallback: synchronous XHR so it fires before window.location.replace
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', trackUrl, false); // false = synchronous
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      try { xhr.send(payload); } catch(e) {}
+    }
+
     window.location.replace("${safeUrl}");
   }, 3000);
 </script>
@@ -185,4 +229,5 @@ module.exports = {
   deleteUrl,
   toggleUrlActive,
   handleRedirect,
+  trackClick,
 };
