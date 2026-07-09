@@ -59,6 +59,11 @@ app.get("/api/dashboard", authMiddleware, (req, res) => {
 /* ── URL Routes (Protected) ── */
 app.use("/api/urls", authMiddleware, urlRoutes);
 
+/* ── Public Click-Track Route ── */
+// Called by the loader page JS after the 3-second countdown fires.
+// No auth required — the short code is the only identifier needed.
+app.post("/api/track/:shortCode", urlController.trackClick);
+
 /* ── Public Redirect Route ── */
 app.get("/:shortCode", urlController.handleRedirect);
 
