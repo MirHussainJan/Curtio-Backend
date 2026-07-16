@@ -103,52 +103,58 @@ function isDatacenterAsn(asn) {
   return datacenterAsnCache.has(String(asn).trim());
 }
 
-/**
- * Resolves the 2-letter country code and country name from an IP address.
- * Falls back to headers or fetches via freeipapi.com.
- * @param {string} ip The IP address.
- * @param {object} headers The request headers.
- * @returns {Promise<{ countryCode: string, country: string, asnOrganization: string|null, isDatacenter: boolean }>}
- */
-async function getGeoData(ip, headers = {}) {
-  // 1. Try Vercel country headers first
-  if (headers["x-vercel-ip-country"]) {
-    const code = headers["x-vercel-ip-country"].toUpperCase();
-    return {
-      countryCode: code,
-      country: getCountryName(code),
-      asnOrganization: null,
-      isDatacenter: false,
-    };
-  }
+// ── Primary classifier: ipapi.is ──
+// Proprietary WHOIS-based algorithm covering thousands of hosting/cloud
+// providers worldwide (is_datacenter), PLUS a separate named-crawler flag
+// (is_crawler) that catches things no hosting list would — e.g. Meta's own
+// link-preview/safety-scanning bots hitting from their own "business"-type
+// ASN (not a rentable datacenter), which is_crawler identifies by name
+// (e.g. "FacebookBot") regardless. Free for up to 1,000 requests/day with
+// no signup or API key required.
+async function lookupViaIpapiIs(clientIp) {
+  const url = clientIp
+    ? `https://api.ipapi.is/?q=${encodeURIComponent(clientIp)}`
+    : "https://api.ipapi.is/";
 
-  // 2. Try Cloudflare country headers
-  if (headers["cf-ipcountry"]) {
-    const code = headers["cf-ipcountry"].toUpperCase();
-    return {
-      countryCode: code,
-      country: getCountryName(code),
-      asnOrganization: null,
-      isDatacenter: false,
-    };
-  }
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1500);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
 
-  // Keep the datacenter ASN list warm (no-op if still within TTL)
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    if (!data || !data.location || !data.location.country_code) return null;
+
+    const asnOrganization = data.asn?.org || data.company?.name || null;
+    const isAutomated = Boolean(data.is_datacenter) || Boolean(data.is_crawler);
+
+    return {
+      countryCode: data.location.country_code.toUpperCase(),
+      country: data.location.country || getCountryName(data.location.country_code),
+      asnOrganization,
+      isAutomated,
+    };
+  } catch (error) {
+    console.error("ipapi.is lookup failed:", error.message);
+    return null;
+  }
+}
+
+// ── Fallback classifier: freeipapi.com + our own keyword/ASN-list checks ──
+// Used only if ipapi.is is unreachable or its free daily quota is exhausted,
+// so a click is never left completely unclassified.
+async function lookupViaFreeIpApi(clientIp) {
   await ensureDatacenterAsnListFresh();
 
-  // 3. Clean the client IP
-  let clientIp = ip ? ip.split(",")[0].trim() : "";
-
-  // If the IP is localhost/private, we make an API call without an IP address to resolve to the server's public IP
   const url = isPrivateIp(clientIp)
     ? "https://freeipapi.com/api/json/"
     : `https://freeipapi.com/api/json/${clientIp}`;
 
   try {
-    // Add a strict timeout of 1.5 seconds so we don't delay the redirection if the API is slow
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1500);
-
     const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
 
@@ -159,19 +165,65 @@ async function getGeoData(ip, headers = {}) {
           countryCode: data.countryCode.toUpperCase(),
           country: data.countryName || getCountryName(data.countryCode),
           asnOrganization: data.asnOrganization || null,
-          isDatacenter: isDatacenterOrg(data.asnOrganization) || isDatacenterAsn(data.asn),
+          isAutomated: isDatacenterOrg(data.asnOrganization) || isDatacenterAsn(data.asn),
         };
       }
     }
   } catch (error) {
-    console.error("GeoIP lookup failed:", error.message);
+    console.error("GeoIP fallback lookup failed:", error.message);
   }
+
+  return null;
+}
+
+/**
+ * Resolves the country and automated-traffic classification for an IP.
+ * Tries ipapi.is first (real datacenter + named-crawler detection), falls
+ * back to freeipapi.com + our own keyword/ASN-list heuristics if that
+ * fails, and finally to a static default so a lookup failure never breaks
+ * click tracking.
+ * @param {string} ip The IP address.
+ * @param {object} headers The request headers.
+ * @returns {Promise<{ countryCode: string, country: string, asnOrganization: string|null, isAutomated: boolean }>}
+ */
+async function getGeoData(ip, headers = {}) {
+  // 1. Try Vercel country headers first
+  if (headers["x-vercel-ip-country"]) {
+    const code = headers["x-vercel-ip-country"].toUpperCase();
+    return {
+      countryCode: code,
+      country: getCountryName(code),
+      asnOrganization: null,
+      isAutomated: false,
+    };
+  }
+
+  // 2. Try Cloudflare country headers
+  if (headers["cf-ipcountry"]) {
+    const code = headers["cf-ipcountry"].toUpperCase();
+    return {
+      countryCode: code,
+      country: getCountryName(code),
+      asnOrganization: null,
+      isAutomated: false,
+    };
+  }
+
+  // 3. Clean the client IP
+  const clientIp = ip ? ip.split(",")[0].trim() : "";
+  const lookupIp = isPrivateIp(clientIp) ? "" : clientIp;
+
+  const primary = await lookupViaIpapiIs(lookupIp);
+  if (primary) return primary;
+
+  const fallback = await lookupViaFreeIpApi(clientIp);
+  if (fallback) return fallback;
 
   return {
     countryCode: "US",
     country: "United States",
     asnOrganization: null,
-    isDatacenter: false,
+    isAutomated: false,
   };
 }
 

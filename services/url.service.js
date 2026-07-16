@@ -300,11 +300,12 @@ const trackClick = async (shortCode, { ip, userAgent, headers, utmSource, origin
   const { getGeoData } = require("../utils/geoip");
   const geoData = await getGeoData(ip, headers);
 
-  // ── Drop automated scanner/prefetch hits (e.g. Microsoft Safe Links) ──
-  // These fully render the page with an ordinary-looking browser UA
-  // specifically to evade UA-based bot detection, but originate from
-  // cloud/datacenter ASNs a real visitor's ISP would never show up as.
-  if (geoData.isDatacenter) return;
+  // ── Drop automated scanner/crawler hits (Microsoft Safe Links, Meta's
+  // link-preview bots, etc.) ── These fully render the page with an
+  // ordinary-looking browser UA specifically to evade UA-based bot
+  // detection, but originate from datacenter or known-crawler IPs a real
+  // visitor would never show up as.
+  if (geoData.isAutomated) return;
 
   // originalReferer is the Referer captured on the FIRST hit (the initial
   // GET to /:shortCode, which carries the real originating page). The
