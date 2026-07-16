@@ -40,6 +40,69 @@ function isDatacenterOrg(org) {
   return DATACENTER_ASN_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
+// Manually-confirmed ASN numbers (via WHOIS/BGP lookup) for hosting/
+// datacenter networks whose org name doesn't contain any of the keywords
+// above. Always merged into the fetched list below, so these survive even
+// if the upstream list ever drops them.
+// 209854 = Cyberzone S.A. ("Cyberzonehub") — hosting/VPS network, Panama.
+const MANUAL_DATACENTER_ASN_NUMBERS = new Set(["209854"]);
+
+// ── Worldwide datacenter ASN list (community-maintained, auto-updated) ──
+// Source: X4BNet/lists_vpn, which classifies ASNs globally by registration
+// type (hosting vs ISP) rather than relying on a hand-picked provider list —
+// currently ~900 ASNs. Fetched once and cached in memory, refreshed every
+// 24h so newly-added networks get picked up without a redeploy. Fails safe:
+// if the fetch ever fails, whatever was last cached (or the manual set
+// above, at minimum) keeps being used.
+const DATACENTER_ASN_LIST_URL = "https://raw.githubusercontent.com/X4BNet/lists_vpn/main/input/datacenter/ASN.txt";
+const DATACENTER_ASN_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+let datacenterAsnCache = new Set(MANUAL_DATACENTER_ASN_NUMBERS);
+let datacenterAsnCacheFetchedAt = 0;
+
+async function refreshDatacenterAsnList() {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(DATACENTER_ASN_LIST_URL, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const text = await response.text();
+      const asns = text
+        .split("\n")
+        .map((line) => {
+          const match = line.match(/^AS(\d+)/i);
+          return match ? match[1] : null;
+        })
+        .filter(Boolean);
+
+      if (asns.length > 0) {
+        const fresh = new Set(asns);
+        for (const asn of MANUAL_DATACENTER_ASN_NUMBERS) fresh.add(asn);
+        datacenterAsnCache = fresh;
+      }
+    }
+    // Mark as freshly checked either way, so a transient failure doesn't
+    // cause a retry on every single click until the next TTL window.
+    datacenterAsnCacheFetchedAt = Date.now();
+  } catch (error) {
+    console.error("Failed to refresh datacenter ASN list:", error.message);
+    datacenterAsnCacheFetchedAt = Date.now();
+  }
+}
+
+async function ensureDatacenterAsnListFresh() {
+  if (Date.now() - datacenterAsnCacheFetchedAt > DATACENTER_ASN_CACHE_TTL_MS) {
+    await refreshDatacenterAsnList();
+  }
+}
+
+function isDatacenterAsn(asn) {
+  if (!asn) return false;
+  return datacenterAsnCache.has(String(asn).trim());
+}
+
 /**
  * Resolves the 2-letter country code and country name from an IP address.
  * Falls back to headers or fetches via freeipapi.com.
@@ -70,6 +133,9 @@ async function getGeoData(ip, headers = {}) {
     };
   }
 
+  // Keep the datacenter ASN list warm (no-op if still within TTL)
+  await ensureDatacenterAsnListFresh();
+
   // 3. Clean the client IP
   let clientIp = ip ? ip.split(",")[0].trim() : "";
 
@@ -93,7 +159,7 @@ async function getGeoData(ip, headers = {}) {
           countryCode: data.countryCode.toUpperCase(),
           country: data.countryName || getCountryName(data.countryCode),
           asnOrganization: data.asnOrganization || null,
-          isDatacenter: isDatacenterOrg(data.asnOrganization),
+          isDatacenter: isDatacenterOrg(data.asnOrganization) || isDatacenterAsn(data.asn),
         };
       }
     }
