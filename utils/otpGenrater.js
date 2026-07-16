@@ -25,13 +25,13 @@ const generateOTP = () => {
  */
 const sendOTPEmail = async (toEmail, otp, name = "User") => {
   const mailOptions = {
-    from: `"Brevly" <${env.AppEmail}>`,
+    from: `"Curtio" <${env.AppEmail}>`,
     to: toEmail,
-    subject: "Your Brevly Verification Code",
+    subject: "Your Curtio Verification Code",
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f8fafc; border-radius: 12px;">
         <div style="text-align: center; margin-bottom: 24px;">
-          <h1 style="color: #4F46E5; font-size: 28px; margin: 0;">⚡ Brevly</h1>
+          <h1 style="color: #4F46E5; font-size: 28px; margin: 0;">⚡ Curtio</h1>
         </div>
         <h2 style="color: #1e293b; font-size: 20px;">Hi ${name},</h2>
         <p style="color: #475569; font-size: 15px; line-height: 1.6;">
@@ -42,7 +42,7 @@ const sendOTPEmail = async (toEmail, otp, name = "User") => {
           <span style="color: white; font-size: 36px; font-weight: 800; letter-spacing: 10px;">${otp}</span>
         </div>
         <p style="color: #94a3b8; font-size: 13px;">
-          If you didn't create a Brevly account, you can safely ignore this email.
+          If you didn't create a Curtio account, you can safely ignore this email.
         </p>
       </div>
     `,
