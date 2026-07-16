@@ -21,12 +21,31 @@ function isPrivateIp(ip) {
   return false;
 }
 
+// ASN organization name substrings that indicate a cloud/hosting/datacenter
+// origin rather than a residential or mobile ISP — used to catch automated
+// scanners (e.g. Microsoft Defender Safe Links prefetching links shared via
+// Teams/Outlook) that render the page with a normal-looking browser UA
+// specifically to evade user-agent-based bot detection.
+const DATACENTER_ASN_KEYWORDS = [
+  "microsoft", "azure", "amazon", "aws", "google cloud", "google llc",
+  "digitalocean", "digital ocean", "ovh", "hetzner", "linode", "akamai",
+  "cloudflare", "fastly", "oracle cloud", "alibaba", "tencent",
+  "vultr", "choopa", "contabo", "scaleway", "leaseweb", "psychz", "m247",
+  "hosting", "datacenter", "data center", "cloud computing", "colocation", "vps",
+];
+
+function isDatacenterOrg(org) {
+  if (!org) return false;
+  const lower = org.toLowerCase();
+  return DATACENTER_ASN_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
 /**
  * Resolves the 2-letter country code and country name from an IP address.
  * Falls back to headers or fetches via freeipapi.com.
  * @param {string} ip The IP address.
  * @param {object} headers The request headers.
- * @returns {Promise<{ countryCode: string, country: string }>}
+ * @returns {Promise<{ countryCode: string, country: string, asnOrganization: string|null, isDatacenter: boolean }>}
  */
 async function getGeoData(ip, headers = {}) {
   // 1. Try Vercel country headers first
@@ -34,24 +53,28 @@ async function getGeoData(ip, headers = {}) {
     const code = headers["x-vercel-ip-country"].toUpperCase();
     return {
       countryCode: code,
-      country: getCountryName(code)
+      country: getCountryName(code),
+      asnOrganization: null,
+      isDatacenter: false,
     };
   }
-  
+
   // 2. Try Cloudflare country headers
   if (headers["cf-ipcountry"]) {
     const code = headers["cf-ipcountry"].toUpperCase();
     return {
       countryCode: code,
-      country: getCountryName(code)
+      country: getCountryName(code),
+      asnOrganization: null,
+      isDatacenter: false,
     };
   }
 
   // 3. Clean the client IP
   let clientIp = ip ? ip.split(",")[0].trim() : "";
-  
+
   // If the IP is localhost/private, we make an API call without an IP address to resolve to the server's public IP
-  const url = isPrivateIp(clientIp) 
+  const url = isPrivateIp(clientIp)
     ? "https://freeipapi.com/api/json/"
     : `https://freeipapi.com/api/json/${clientIp}`;
 
@@ -68,7 +91,9 @@ async function getGeoData(ip, headers = {}) {
       if (data && data.countryCode && data.countryCode !== "-") {
         return {
           countryCode: data.countryCode.toUpperCase(),
-          country: data.countryName || getCountryName(data.countryCode)
+          country: data.countryName || getCountryName(data.countryCode),
+          asnOrganization: data.asnOrganization || null,
+          isDatacenter: isDatacenterOrg(data.asnOrganization),
         };
       }
     }
@@ -78,7 +103,9 @@ async function getGeoData(ip, headers = {}) {
 
   return {
     countryCode: "US",
-    country: "United States"
+    country: "United States",
+    asnOrganization: null,
+    isDatacenter: false,
   };
 }
 

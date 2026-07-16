@@ -101,7 +101,13 @@ const handleRedirect = async (req, res) => {
     const utmSource = req.query.utm_source || "";
     const apiBase = process.env.BACK_END_URL || "";
 
-    return res.status(200).send(buildRedirectPage(destinationUrl, shortCode, utmSource, apiBase));
+    // Capture the REAL referer here — this is the only request that carries
+    // the actual originating page (Teams, LinkedIn, an email client, etc).
+    // The later /api/track POST is fired by this loader page's own JS, so
+    // its Referer is always self-referential and useless for attribution.
+    const originalReferer = req.headers.referer || req.headers.referrer || "";
+
+    return res.status(200).send(buildRedirectPage(destinationUrl, shortCode, utmSource, apiBase, originalReferer));
   } catch (error) {
     if (error.passwordRequired) {
       const frontendUrl = process.env.FRONT_END_URL;
@@ -121,6 +127,11 @@ const trackClick = async (req, res) => {
   const ip = req.headers["x-forwarded-for"] || req.ip || req.socket.remoteAddress;
   const userAgent = req.headers["user-agent"];
   const utmSource = req.body?.utmSource || req.query.utm_source || null;
+  // Distinguish "not sent" (undefined — fall back to headers.referer) from
+  // "sent as empty string" (explicitly no referer on the original hit).
+  const originalReferer = req.body && Object.prototype.hasOwnProperty.call(req.body, "originalReferer")
+    ? req.body.originalReferer
+    : null;
 
   try {
     await urlService.trackClick(shortCode, {
@@ -128,6 +139,7 @@ const trackClick = async (req, res) => {
       userAgent,
       headers: req.headers,
       utmSource,
+      originalReferer,
     });
     return res.status(200).json({ success: true });
   } catch (error) {
@@ -137,11 +149,12 @@ const trackClick = async (req, res) => {
   }
 };
 
-function buildRedirectPage(destinationUrl, shortCode, utmSource, apiBase) {
+function buildRedirectPage(destinationUrl, shortCode, utmSource, apiBase, originalReferer) {
   const safeUrl = destinationUrl.replace(/"/g, "&quot;");
   const safeCode = (shortCode || "").replace(/[^a-zA-Z0-9_-]/g, "");
   const safeUtm = (utmSource || "").replace(/"/g, "&quot;");
   const safeApi = (apiBase || "").replace(/"/g, "&quot;");
+  const safeReferer = (originalReferer || "").replace(/"/g, "&quot;");
 
   return `<!DOCTYPE html>
 <html>
@@ -201,7 +214,7 @@ function buildRedirectPage(destinationUrl, shortCode, utmSource, apiBase) {
   // If the user closes the tab before this runs, no click is recorded.
   setTimeout(function () {
     var trackUrl = "${safeApi}/api/track/${safeCode}";
-    var payload = JSON.stringify({ utmSource: "${safeUtm}" });
+    var payload = JSON.stringify({ utmSource: "${safeUtm}", originalReferer: "${safeReferer}" });
 
     // sendBeacon is fire-and-forget and survives page unload
     if (navigator.sendBeacon) {

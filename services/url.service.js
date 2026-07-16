@@ -276,7 +276,7 @@ const resolveShortUrl = async (shortCode, { enteredPassword } = {}) => {
  * Called ONLY after the loader page has fully counted down (≥3 s on the client),
  * so closing the tab before redirect fires will NOT register a click.
  */
-const trackClick = async (shortCode, { ip, userAgent, headers, utmSource }) => {
+const trackClick = async (shortCode, { ip, userAgent, headers, utmSource, originalReferer }) => {
   // ── Bot check — ignore programmatic / preview fetches ──
   const ua = userAgent || "";
   if (!isWebBrowser(ua, headers)) return;
@@ -300,7 +300,20 @@ const trackClick = async (shortCode, { ip, userAgent, headers, utmSource }) => {
   const { getGeoData } = require("../utils/geoip");
   const geoData = await getGeoData(ip, headers);
 
-  const referer = headers?.referer || headers?.referrer || null;
+  // ── Drop automated scanner/prefetch hits (e.g. Microsoft Safe Links) ──
+  // These fully render the page with an ordinary-looking browser UA
+  // specifically to evade UA-based bot detection, but originate from
+  // cloud/datacenter ASNs a real visitor's ISP would never show up as.
+  if (geoData.isDatacenter) return;
+
+  // originalReferer is the Referer captured on the FIRST hit (the initial
+  // GET to /:shortCode, which carries the real originating page). The
+  // Referer on headers here belongs to THIS tracking request, which is
+  // fired by the loader page's own JS — so it's always self-referential
+  // (the loader page's own URL) and useless for source attribution.
+  const referer = originalReferer !== null && originalReferer !== undefined
+    ? originalReferer
+    : headers?.referer || headers?.referrer || null;
   const xRequestedWith = headers?.["x-requested-with"] || null;
 
   const source = utmSource
