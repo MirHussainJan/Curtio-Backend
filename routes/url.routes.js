@@ -7,5 +7,6 @@ router.post("/", urlController.createShortUrl);
 router.get("/", urlController.getMyUrls);
 router.delete("/:shortCode", urlController.deleteUrl);
 router.patch("/:shortCode/toggle", urlController.toggleUrlActive);
+router.patch("/:shortCode/labels", urlController.updateUrlLabels);
 
 module.exports = router;

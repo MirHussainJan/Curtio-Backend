@@ -318,4 +318,28 @@ router.patch("/update-profile", authMiddleware, async (req, res) => {
   }
 });
 
+/* ── Custom Labels (Protected) ── */
+router.put("/labels", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { labels } = req.body;
+    if (!labels) {
+      return res.status(400).json({ success: false, message: "Labels object is required." });
+    }
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+    
+    // Set labels
+    user.labels = labels;
+    await user.save();
+    
+    res.json({ success: true, message: "Labels updated successfully", labels: user.labels });
+  } catch (err) {
+    console.error("Update labels error:", err);
+    res.status(500).json({ success: false, message: "Server error." });
+  }
+});
+
 module.exports = router;

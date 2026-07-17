@@ -344,7 +344,7 @@ const getUserUrls = async (userId) => {
   if (!user) {
     throw new Error("User not found.");
   }
-  return user.urls;
+  return { urls: user.urls, labels: user.labels || {} };
 };
 
 /**
@@ -385,6 +385,25 @@ const toggleUserUrlActive = async (userId, shortCode) => {
   return urlObj;
 };
 
+/**
+ * Update the labels of a shortened URL.
+ */
+const updateUserUrlLabels = async (userId, shortCode, labels) => {
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new Error("User not found.");
+  }
+
+  const urlObj = user.urls.find((u) => u.shortCode === shortCode);
+  if (!urlObj) {
+    throw new Error("Short URL not found under this account.");
+  }
+
+  urlObj.labels = labels;
+  await user.save();
+  return urlObj;
+};
+
 module.exports = {
   validateUrl,
   addShortUrl,
@@ -393,4 +412,5 @@ module.exports = {
   getUserUrls,
   deleteUserUrl,
   toggleUserUrlActive,
+  updateUserUrlLabels,
 };

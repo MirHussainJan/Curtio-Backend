@@ -28,6 +28,10 @@ const urlSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    labels: {
+      type: [String],
+      default: [],
+    },
     clickLogs: [
       {
         ip: String,
@@ -103,6 +107,18 @@ const userSchema = new mongoose.Schema(
     otpExpiry: {
       type: Date,
       default: null,
+    },
+    labels: {
+      type: Map,
+      of: {
+        name: { type: String, required: true },
+        color: { type: String, required: true }
+      },
+      default: {
+        "1": { name: "Priority", color: "#ef4444" },
+        "2": { name: "Marketing", color: "#3b82f6" },
+        "3": { name: "Product", color: "#10b981" }
+      }
     },
     urls: [urlSchema],
   },
