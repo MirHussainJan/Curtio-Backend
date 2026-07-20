@@ -30,8 +30,8 @@ const createShortUrl = async (req, res) => {
 const getMyUrls = async (req, res) => {
   try {
     const userId = req.user.id;
-    const urls = await urlService.getUserUrls(userId);
-    return res.status(200).json({ success: true, urls });
+    const { urls, labels } = await urlService.getUserUrls(userId);
+    return res.status(200).json({ success: true, urls, labels });
   } catch (error) {
     console.error("Get URLs error:", error);
     return res.status(500).json({ success: false, message: error.message });
@@ -236,6 +236,28 @@ function buildRedirectPage(destinationUrl, shortCode, utmSource, apiBase, origin
 }
 
 
+const updateUrlLabels = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { shortCode } = req.params;
+    const { labels } = req.body;
+
+    if (!Array.isArray(labels)) {
+      return res.status(400).json({ success: false, message: "Labels must be an array of string keys." });
+    }
+
+    const url = await urlService.updateUserUrlLabels(userId, shortCode, labels);
+    return res.status(200).json({
+      success: true,
+      message: "Link labels updated successfully.",
+      url,
+    });
+  } catch (error) {
+    console.error("Update URL labels error:", error);
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   createShortUrl,
   getMyUrls,
@@ -243,4 +265,5 @@ module.exports = {
   toggleUrlActive,
   handleRedirect,
   trackClick,
+  updateUrlLabels,
 };
