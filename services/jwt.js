@@ -13,7 +13,7 @@ const generateToken = (user) => {
       name: user.name,
     },
     env.JWT_SECRET,
-    { expiresIn: "10s" }
+    { expiresIn: "10d" }
   );
 };
 
