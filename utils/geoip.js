@@ -128,7 +128,16 @@ async function lookupViaIpapiIs(clientIp) {
     if (!data || !data.location || !data.location.country_code) return null;
 
     const asnOrganization = data.asn?.org || data.company?.name || null;
-    const isAutomated = Boolean(data.is_datacenter) || Boolean(data.is_crawler);
+
+    // ipapi.is's is_datacenter flag is block-level and has false positives:
+    // some real ISPs (e.g. Nayatel in Pakistan) route through IP ranges
+    // WHOIS-registered to a reseller/cloud company, tripping is_datacenter
+    // even though asn.type/company.type correctly say "isp". Trust the
+    // explicit "isp" typing over the coarser flag. is_crawler is a named
+    // bot identification (e.g. "FacebookBot") and isn't prone to this same
+    // false-positive pattern, so it's always trusted independently.
+    const isExplicitIsp = data.asn?.type === "isp" || data.company?.type === "isp";
+    const isAutomated = Boolean(data.is_crawler) || (!isExplicitIsp && Boolean(data.is_datacenter));
 
     return {
       countryCode: data.location.country_code.toUpperCase(),
